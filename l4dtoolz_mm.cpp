@@ -100,7 +100,7 @@ bool l4dtoolz::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, bool
 	GET_V_IFACE_CURRENT(GetEngineFactory, g_pCVar, ICvar, CVAR_INTERFACE_VERSION);
 
 	void* handle = NULL;
-#ifdef PLATFORM_WINDOWS
+#if SH_SYS == SH_SYS_WIN32
 	if (!(handle=SH_GET_ORIG_VFNPTR_ENTRY(engine, &IVEngineServer::CreateFakeClient))) {
 		Warning("Failed to get address 'IVEngineServer::CreateFakeClient'\n");
 	} else {
