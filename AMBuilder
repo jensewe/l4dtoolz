@@ -4,7 +4,7 @@ projectName = 'l4dtoolz'
 # smsdk_ext.cpp will be automatically added later
 sourceFiles = [
   'l4dtoolz_mm.cpp',
-  'signature.cpp',
+  'memutils.cpp',
 ]
 
 ###############

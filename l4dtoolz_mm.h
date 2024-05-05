@@ -8,6 +8,8 @@ class l4dtoolz : public ISmmPlugin, public IConCommandBaseAccessor
 public:
 	bool Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, bool late);
 	bool Unload(char *error, size_t maxlen);
+	bool LevelInit(const char *pMapName, char const *pMapEntities, char const *pOldLevel, char const *pLandmarkName, bool loadGame, bool background);
+	void LevelShutdown();
 public:
 	const char *GetAuthor();
 	const char *GetName();
@@ -20,25 +22,12 @@ public:
 public:    //IConCommandBaseAccessor
 	bool RegisterConCommandBase(ConCommandBase *pVar);
 public:
-
 	static void OnChangeMaxplayers ( IConVar *var, const char *pOldValue, float flOldValue );
 	static void OnChangeUnreserved ( IConVar *var, const char *pOldValue, float flOldValue );
-
-#if SOURCE_ENGINE == SE_LEFT4DEAD
-	static void OnChangeRemovehumanlimit ( IConVar *var, const char *pOldValue, float flOldValue );
-	static void* max_players_friend_lobby;
-	static void* chuman_limit;
-#endif
-
-	static void* max_players_connect;
-	static void* max_players_server_browser;
-	static void* lobby_sux_ptr;
-	static void* tmp_player;
-	static void* unreserved_ptr;
-	static void* lobby_match_ptr;
 };
 
 size_t UTIL_Format(char *buffer, size_t maxlength, const char *fmt, ...);
+ServerClass *UTIL_FindServerClass(const char *classname);
 
 extern l4dtoolz g_l4dtoolz;
 

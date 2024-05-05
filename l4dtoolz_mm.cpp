@@ -1,110 +1,90 @@
 #include "l4dtoolz_mm.h"
-#include "signature.h"
-#include "game_signature.h"
+#include "game_offsets.h"
+#include "memutils.h"
 #include "icommandline.h"
+#include "server_class.h"
+#include "sourcehook.h"
+#include "matchmaking/imatchframework.h"
 
 l4dtoolz g_l4dtoolz;
+IServerGameDLL* gamedll = NULL;
+IServerGameClients* gameclients = NULL;
 IVEngineServer* engine = NULL;
+IMatchFramework* g_pMatchFramework = NULL;
 ICvar* g_pCVar = NULL;
+IServer* g_pGameIServer = NULL;
+void* g_pGameRules = nullptr;
+int m_numGameSlots = -1;
 
-#if SOURCE_ENGINE == SE_LEFT4DEAD
-void* l4dtoolz::max_players_friend_lobby = NULL;
-void* l4dtoolz::chuman_limit = NULL;
-#endif
-
-void* l4dtoolz::max_players_connect = NULL;
-void* l4dtoolz::max_players_server_browser = NULL;
-void* l4dtoolz::lobby_sux_ptr = NULL;
-void* l4dtoolz::tmp_player = NULL;
-void* l4dtoolz::unreserved_ptr = NULL;
-void* l4dtoolz::lobby_match_ptr = NULL;
+SH_DECL_HOOK1_void(IServerGameDLL, ApplyGameSettings, SH_NOATTRIB, 0, KeyValues*);
+SH_DECL_HOOK0(IMatchTitle, GetTotalNumPlayersSupported, SH_NOATTRIB, 0, int);
+SH_DECL_HOOK6(IServerGameDLL, LevelInit, SH_NOATTRIB, 0, bool, char const *, char const *, char const *, char const *, bool, bool);
+SH_DECL_HOOK0_void(IServerGameDLL, LevelShutdown, SH_NOATTRIB, 0);
+SH_DECL_MANUALHOOK0(CTerrorGameRules_GetMaxHumanPlayers, maxhuman_idx, 0, 0, int);
+SH_DECL_MANUALHOOK2_void(CBaseServer_ReplyReservationRequest, reservation_idx, 0, 0, netadr_s&, CBitRead&);
 
 ConVar sv_maxplayers("sv_maxplayers", "-1", 0, "Max Human Players", true, -1, true, 32, l4dtoolz::OnChangeMaxplayers);
-#if SOURCE_ENGINE == SE_LEFT4DEAD
-ConVar sv_removehumanlimit("sv_removehumanlimit", "0", 0, "Remove Human limit reached kick", true, 0, true, 1, l4dtoolz::OnChangeRemovehumanlimit);
-#endif
 ConVar sv_force_unreserved("sv_force_unreserved", "0", 0, "Disallow lobby reservation cookie", true, 0, true, 1, l4dtoolz::OnChangeUnreserved);
 
 void l4dtoolz::OnChangeMaxplayers ( IConVar *var, const char *pOldValue, float flOldValue )
 {
 	int new_value = ((ConVar*)var)->GetInt();
 	int old_value = atoi(pOldValue);
-#if SOURCE_ENGINE == SE_LEFT4DEAD
-	if (max_players_friend_lobby == NULL || max_players_connect == NULL || max_players_server_browser == NULL || lobby_sux_ptr == NULL) {
-#else
-	if (max_players_connect == NULL || max_players_server_browser == NULL || lobby_sux_ptr == NULL) {
-#endif
-		Msg("sv_maxplayers init error\n");
+	if (g_pGameIServer == NULL) {
+		Msg("g_pGameIServer pointer is not available\n");
 		return;
 	}
 	if(new_value != old_value) {
 		if(new_value >= 0) {
-#if SOURCE_ENGINE == SE_LEFT4DEAD
-			max_players_new[4] = friends_lobby_new[3] = server_bplayers_new[3] = (unsigned char)new_value;
-#else
-			max_players_new[4] = server_bplayers_new[3] = (unsigned char)new_value;
-#endif
-			if(lobby_match_ptr) {
-				lobby_match_new[2] = (unsigned char)new_value;
-				write_signature(lobby_match_ptr, lobby_match_new);
-			} else {
-				Msg("sv_maxplayers MS init error\n");
-			}
-#if SOURCE_ENGINE == SE_LEFT4DEAD
-			write_signature(max_players_friend_lobby, friends_lobby_new);
-#endif
-			write_signature(max_players_connect, max_players_new);
-			write_signature(lobby_sux_ptr, lobby_sux_new);
-			write_signature(max_players_server_browser, server_bplayers_new);
+			m_numGameSlots = new_value;
+			*(int*)(((uint**)g_pGameIServer)+slots_offs) = m_numGameSlots;
 		} else {
-#if SOURCE_ENGINE == SE_LEFT4DEAD
-			write_signature(max_players_friend_lobby, friends_lobby_org);
-#endif
-			write_signature(max_players_connect, max_players_org);
-			write_signature(lobby_sux_ptr, lobby_sux_org);
-			write_signature(max_players_server_browser, server_bplayers_org);
-		
-			if(lobby_match_ptr)
-				write_signature(lobby_match_ptr, lobby_match_org);
+			m_numGameSlots = -1;
 		}
 	}
 }
-
-#if SOURCE_ENGINE == SE_LEFT4DEAD
-void l4dtoolz::OnChangeRemovehumanlimit ( IConVar *var, const char *pOldValue, float flOldValue )
-{
-	int new_value = ((ConVar*)var)->GetInt();
-	int old_value = atoi(pOldValue);
-	if(chuman_limit == NULL) {
-		Msg( "sv_removehumanlimit init error\n");
-		return;
-	}
-	if(new_value != old_value) {
-		if(new_value == 1) {
-			write_signature(chuman_limit, human_limit_new);
-		}else{
-			write_signature(chuman_limit, human_limit_org);
-		}
-	}
-}
-#endif
 
 void l4dtoolz::OnChangeUnreserved ( IConVar *var, const char *pOldValue, float flOldValue )
 {
 	int new_value = ((ConVar*)var)->GetInt();
 	int old_value = atoi(pOldValue);
-	if(unreserved_ptr == NULL ) {
-		Msg("unreserved_ptr init error\n");
+	if (g_pGameIServer == NULL) {
+		Msg("g_pGameIServer pointer is not available\n");
 		return;
 	}
 	if(new_value != old_value) {
 		if(new_value == 1) {
-			write_signature(unreserved_ptr, unreserved_new);
 			engine->ServerCommand("sv_allow_lobby_connect_only 0\n");
-		} else {
-			write_signature(unreserved_ptr, unreserved_org);
 		}
 	}
+}
+
+void Hook_ApplyGameSettings(KeyValues *pKV)
+{
+	if (!pKV) {
+		return;
+	}
+	m_numGameSlots = sv_maxplayers.GetInt();
+	if (m_numGameSlots == -1) {
+		return;
+	}
+	pKV->SetInt("members/numSlots", m_numGameSlots);
+}
+
+void Hook_ReplyReservationRequest(netadr_s& adr, CBitRead& inmsg)
+{
+	if (sv_force_unreserved.GetInt()) {
+		RETURN_META(MRES_SUPERCEDE);
+	}
+	RETURN_META(MRES_IGNORED);
+}
+
+int Hook_GetMaxHumanPlayers()
+{
+	if (m_numGameSlots > 0) {
+		RETURN_META_VALUE(MRES_SUPERCEDE, m_numGameSlots);
+	}
+	RETURN_META_VALUE(MRES_IGNORED, m_numGameSlots);
 }
 
 PLUGIN_EXPOSE(l4dtoolz, g_l4dtoolz);
@@ -113,54 +93,31 @@ bool l4dtoolz::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, bool
 {
 	PLUGIN_SAVEVARS();
 
+	GET_V_IFACE_CURRENT(GetServerFactory, gamedll, IServerGameDLL, INTERFACEVERSION_SERVERGAMEDLL);
+	GET_V_IFACE_CURRENT(GetServerFactory, gameclients, IServerGameClients, INTERFACEVERSION_SERVERGAMECLIENTS);
 	GET_V_IFACE_CURRENT(GetEngineFactory, engine, IVEngineServer, INTERFACEVERSION_VENGINESERVER);
+	GET_V_IFACE_CURRENT(GetEngineFactory, g_pMatchFramework, IMatchFramework, IMATCHFRAMEWORK_VERSION_STRING);
 	GET_V_IFACE_CURRENT(GetEngineFactory, g_pCVar, ICvar, CVAR_INTERFACE_VERSION);
 
-	ConVar_Register(0, this);
-
-	struct base_addr_t base_addr;
-	base_addr.addr = NULL;
-	base_addr.len = 0;
-
-	find_base_from_list(matchmaking_dll, &base_addr);
-
-	if(!lobby_match_ptr) {
-		lobby_match_ptr = find_signature(lobby_match, &base_addr, 1);
-		get_original_signature(lobby_match_ptr, lobby_match_new, lobby_match_org);
-	}
-
-	find_base_from_list(engine_dll, &base_addr);
-#if SOURCE_ENGINE == SE_LEFT4DEAD
-	if(!max_players_friend_lobby) {
-		max_players_friend_lobby = find_signature(friends_lobby, &base_addr, 0);
-		get_original_signature(max_players_friend_lobby, friends_lobby_new, friends_lobby_org);
-	}
-#endif
-	if(!max_players_connect) {
-		max_players_connect = find_signature(max_players, &base_addr, 0);
-		get_original_signature(max_players_connect, max_players_new, max_players_org);
-	}
-	if(!lobby_sux_ptr) {
-#ifdef WIN32
-		lobby_sux_ptr = max_players_connect;
+	void* handle = NULL;
+#ifdef PLATFORM_WINDOWS
+	if (!(handle=SH_GET_ORIG_VFNPTR_ENTRY(engine, &IVEngineServer::CreateFakeClient))) {
+		Warning("Failed to get address 'IVEngineServer::CreateFakeClient'\n");
+	} else {
+		g_pGameIServer = *reinterpret_cast<IServer **>(reinterpret_cast<unsigned char *>(handle)+sv_offs);
 #else
-		lobby_sux_ptr = find_signature(lobby_sux, &base_addr, 0);
+	if (!(handle=dlopen(engine_dll, RTLD_LAZY))) {
+		Warning("Could't open library '%s'\n", engine_dll);
+	} else {
+		g_pGameIServer = (IServer *)g_MemUtils.ResolveSymbol(handle, "sv");
+		dlclose(handle);
 #endif
-		get_original_signature(lobby_sux_ptr, lobby_sux_new, lobby_sux_org);
-	}
-#if SOURCE_ENGINE == SE_LEFT4DEAD
-#ifdef WIN32
-	if(!max_players_server_browser) {
-		max_players_server_browser = find_signature(server_bplayers, &base_addr, 0);
-		get_original_signature(max_players_server_browser, server_bplayers_new, server_bplayers_org);
-	}
-#endif
-#endif
-	if(!tmp_player) {
-		tmp_player = find_signature(players, &base_addr, 0);
-		if(tmp_player) {
-			get_original_signature(tmp_player, players_new, players_org);
-			write_signature(tmp_player, players_new);
+		int* m_nMaxClientsLimit = (int*)(((uint**)g_pGameIServer)+maxplayers_offs);
+		if (*m_nMaxClientsLimit != 0x12) {
+			Warning("Couldn't patch maxplayers\n");
+			g_pGameIServer = NULL;
+		} else {
+			*m_nMaxClientsLimit = 0x20;
 			const char *pszCmdLineMax;
 			if(CommandLine()->CheckParm("-maxplayers", &pszCmdLineMax) || CommandLine()->CheckParm("+maxplayers", &pszCmdLineMax)) {
 				char command[32];
@@ -170,60 +127,73 @@ bool l4dtoolz::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, bool
 				engine->ServerCommand("maxplayers 31\n");
 			}
 			engine->ServerExecute();
-			write_signature(tmp_player, players_org);
-			free(players_org);
-			players_org = NULL;
 		}
 	}
-	if(!unreserved_ptr) {
-		unreserved_ptr = find_signature(unreserved, &base_addr, 0);
-		get_original_signature(unreserved_ptr, unreserved_new, unreserved_org);
+
+	SH_ADD_HOOK(IServerGameDLL, ApplyGameSettings, gamedll, SH_STATIC(Hook_ApplyGameSettings), true);
+	SH_ADD_HOOK(IMatchTitle, GetTotalNumPlayersSupported, g_pMatchFramework->GetMatchTitle(), SH_STATIC(Hook_GetMaxHumanPlayers), false);
+	SH_ADD_HOOK_MEMFUNC(IServerGameDLL, LevelInit, gamedll, this, &l4dtoolz::LevelInit, true);
+	SH_ADD_HOOK_MEMFUNC(IServerGameDLL, LevelShutdown, gamedll, this, &l4dtoolz::LevelShutdown, false);
+
+	if (g_pGameIServer) {
+		SH_ADD_MANUALHOOK(CBaseServer_ReplyReservationRequest, g_pGameIServer, SH_STATIC(Hook_ReplyReservationRequest), false);
+	} else {
+		Warning("g_pGameIServer pointer is not available\n");
 	}
 
-	find_base_from_list(server_dll, &base_addr);
-#if SOURCE_ENGINE == SE_LEFT4DEAD
-	if(!chuman_limit) {
-		chuman_limit = find_signature(human_limit, &base_addr, 0);
-		get_original_signature(chuman_limit, human_limit_new, human_limit_org);
-	}
-#ifndef WIN32
-	if(!max_players_server_browser) {
-		max_players_server_browser = find_signature(server_bplayers, &base_addr, 0);
-		get_original_signature(max_players_server_browser, server_bplayers_new, server_bplayers_org);
-	}
-#endif
-#else
-	if(!max_players_server_browser) {
-		max_players_server_browser = find_signature(server_bplayers, &base_addr, 0);
-		get_original_signature(max_players_server_browser, server_bplayers_new, server_bplayers_org);
-	}
-#endif
+	ConVar_Register(0, this);
 
 	return true;
 }
 
 bool l4dtoolz::Unload(char *error, size_t maxlen)
 {
-#if SOURCE_ENGINE == SE_LEFT4DEAD
-	write_signature(max_players_friend_lobby, friends_lobby_org);
-	write_signature(chuman_limit, human_limit_org);
-	free(friends_lobby_org);
-	free(human_limit_org);
-#endif
+	SH_REMOVE_HOOK(IServerGameDLL, ApplyGameSettings, gamedll, SH_STATIC(Hook_ApplyGameSettings), true);
+	SH_REMOVE_HOOK(IMatchTitle, GetTotalNumPlayersSupported, g_pMatchFramework->GetMatchTitle(), SH_STATIC(Hook_GetMaxHumanPlayers), false);
+	SH_REMOVE_HOOK_MEMFUNC(IServerGameDLL, LevelInit, gamedll, this, &l4dtoolz::LevelInit, true);
+	SH_REMOVE_HOOK_MEMFUNC(IServerGameDLL, LevelShutdown, gamedll, this, &l4dtoolz::LevelShutdown, false);
 
-	write_signature(max_players_connect, max_players_org);
-	write_signature(lobby_sux_ptr, lobby_sux_org);
-	write_signature(max_players_server_browser, server_bplayers_org);
-	write_signature(unreserved_ptr, unreserved_org);
-	write_signature(lobby_match_ptr, lobby_match_org);
+	if (g_pGameIServer) {
+		SH_REMOVE_MANUALHOOK(CBaseServer_ReplyReservationRequest, g_pGameIServer, SH_STATIC(Hook_ReplyReservationRequest), false);
+	}
 
-	free(max_players_org);
-	free(lobby_sux_org);
-	free(server_bplayers_org);
-	free(unreserved_org);
-	free(lobby_match_org);
+	LevelShutdown();
+	ConVar_Unregister();
 
 	return true;
+}
+
+bool l4dtoolz::LevelInit(const char *pMapName, char const *pMapEntities, char const *pOldLevel, char const *pLandmarkName, bool loadGame, bool background)
+{
+	g_pGameRules = nullptr;
+
+	ServerClass *pServerClass = UTIL_FindServerClass("CTerrorGameRulesProxy");
+	if (pServerClass) {
+		int i, iCount;
+		iCount = pServerClass->m_pTable->GetNumProps();
+		for (i = 0; i < iCount; i++) {
+			if (stricmp(pServerClass->m_pTable->GetProp(i)->GetName(), "terror_gamerules_data") == 0) {
+				g_pGameRules = (*pServerClass->m_pTable->GetProp(i)->GetDataTableProxyFn())(NULL, NULL, NULL, NULL, 0);
+				break;
+			}
+		}	
+	}
+
+	if (g_pGameRules) {
+		SH_ADD_MANUALHOOK(CTerrorGameRules_GetMaxHumanPlayers, g_pGameRules, SH_STATIC(Hook_GetMaxHumanPlayers), false);
+	} else {
+		Warning("g_pGameRules pointer is not available\n");
+	}
+
+	return true;
+}
+
+void l4dtoolz::LevelShutdown()
+{
+	if (g_pGameRules) {
+		SH_REMOVE_MANUALHOOK(CTerrorGameRules_GetMaxHumanPlayers, g_pGameRules, SH_STATIC(Hook_GetMaxHumanPlayers), false);
+		g_pGameRules = nullptr;
+	}
 }
 
 size_t UTIL_Format(char *buffer, size_t maxlength, const char *fmt, ...)
@@ -243,6 +213,21 @@ size_t UTIL_Format(char *buffer, size_t maxlength, const char *fmt, ...)
 	return len;
 }
 
+ServerClass *UTIL_FindServerClass(const char *classname)
+{
+	ServerClass *sc = gamedll->GetAllServerClasses();
+	while (sc)
+	{
+		if (strcmp(classname, sc->GetName()) == 0)
+		{
+			return sc;
+		}
+		sc = sc->m_pNext;
+	}
+
+	return NULL;
+}
+
 const char *l4dtoolz::GetLicense()
 {
 	return "GPLv3";
@@ -250,7 +235,7 @@ const char *l4dtoolz::GetLicense()
 
 const char *l4dtoolz::GetVersion()
 {
-	return "1.1.0.2";
+	return "2.0.0";
 }
 
 const char *l4dtoolz::GetDate()
