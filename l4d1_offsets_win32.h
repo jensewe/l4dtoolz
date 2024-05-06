@@ -2,7 +2,7 @@
 #define _INCLUDE_L4D1_OFFSETS_WIN32_
 
 int sv_offs = 6; // IServer pointer (in IVEngineServer::CreateFakeClient)
-int slots_offs = 95; // m_numGameSlots (in CGameServer::ExecGameTypeCfg)
+int slots_offs = 96; // m_numGameSlots (in CGameServer::ExecGameTypeCfg)
 int reservation_idx = 60; // CBaseServer::ReplyReservationRequest(netadr_s&, bf_read&) vtable
 int maxhuman_idx = 131; // CTerrorGameRules::GetMaxHumanPlayers vtable
 
