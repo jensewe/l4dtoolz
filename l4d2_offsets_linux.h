@@ -3,7 +3,7 @@
 
 const char* engine_dll = "engine_srv.so";
 int slots_offs = 95; // m_numGameSlots (in CGameServer::ExecGameTypeCfg)
-int reserved_offs = 364; // IsReserved() (in CBaseServer::ReplyReservationRequest)
+int reserved_offs = 364; // m_nReservationCookie (in CBaseServer::ReplyReservationRequest)
 int reservation_idx = 62; // CBaseServer::ReplyReservationRequest(netadr_s&, bf_read&) vtable
 int maxhuman_idx = 137; // CTerrorGameRules::GetMaxHumanPlayers vtable
 
