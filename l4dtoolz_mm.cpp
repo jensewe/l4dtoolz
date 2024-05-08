@@ -119,7 +119,9 @@ bool l4dtoolz::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, bool
 		int* m_nMaxClientsLimit = (int*)(((uint**)g_pGameIServer)+maxplayers_offs);
 		if (*m_nMaxClientsLimit != 0x12) {
 			Warning("Couldn't patch maxplayers\n");
-			g_pGameIServer = NULL;
+			if (!late) {
+				g_pGameIServer = NULL;
+			}
 		} else {
 			*m_nMaxClientsLimit = 0x20;
 			const char *pszCmdLineMax;
