@@ -75,7 +75,7 @@ void Hook_ReplyReservationRequest(netadr_s& adr, CBitRead& inmsg)
 {
 	if (sv_force_unreserved.GetInt()) {
 		if (g_pGameIServer != NULL) {
-			if (*(uint64_t*)(((uint**)g_pGameIServer)+reserved_offs) != 0)
+			if (*(uint64_t*)(((char*)g_pGameIServer)+reserved_offs) != 0)
 				RETURN_META(MRES_IGNORED);
 		}
 		RETURN_META(MRES_SUPERCEDE);
