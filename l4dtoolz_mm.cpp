@@ -54,7 +54,7 @@ void l4dtoolz::OnChangeUnreserved ( IConVar *var, const char *pOldValue, float f
 	}
 	if(new_value != old_value) {
 		if(new_value == 1) {
-			engine->ServerCommand("sv_allow_lobby_connect_only 0\n");
+			g_pCVar->FindVar("sv_allow_lobby_connect_only")->SetValue(0);
 		}
 	}
 }
